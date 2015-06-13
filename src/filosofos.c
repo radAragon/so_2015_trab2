@@ -31,6 +31,28 @@ unsigned int NUM_TOKENS;
 pthread_mutex_t LOCK_NUM_TOKENS;
 
 
+int pega_token() {
+	int ret = 0;
+	while (!ret) {
+		pthread_mutex_lock(&LOCK_NUM_TOKENS);
+		if (NUM_TOKENS > 0) {
+			NUM_TOKENS--;
+			ret = 1;
+		}
+		else {
+			ret = 0;
+		}
+		pthread_mutex_unlock(&LOCK_NUM_TOKENS);
+	}
+	return ret;
+}
+
+void devolve_token(){
+	pthread_mutex_lock(&LOCK_NUM_TOKENS);
+	NUM_TOKENS++;
+	pthread_mutex_unlock(&LOCK_NUM_TOKENS);
+}
+
 //Comer requer disponibilidade de recursos ou senão espera
 void comendo() {
 	sleep(TMP_COMENDO);
@@ -41,10 +63,31 @@ void pensando() {
 }
 
 void *filosofo(void *num) {
-	//pthread_mutex_t garfo_esq;
-	//pthread_mutex_t garfo_dir;
-	comendo();
-	pensando();
+	int id = (int)num;
+	int talher_esquerdo, talher_direito;
+
+	talher_esquerdo = id;
+	talher_direito = id+1;
+
+	if (talher_direito == NUM_FILOSOFOS) { //talheres dão a volta na mesa
+		talher_direito = 0;
+	}
+
+	while(true) {
+		printf("\nFilósofo %d está pronto pra comer.");
+		pega_token();
+
+		//pega talheres
+		comendo();
+		//devolve talheres
+
+		devolve_token();
+
+		printf("\nFilósofo %d parou para pensar.");
+		pensando();
+	}
+
+	printf("\nFilósofo %d acabou de comer.");
 	return (void *) 0;
 }
 
