@@ -1,0 +1,1 @@
+gcc src/filosofos.c -o filosofos -lpthread

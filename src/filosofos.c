@@ -14,10 +14,8 @@
 #include <unistd.h>
 
 
-int pega_talheres(int num_esquerdo, int num_direito);
+int pega_talheres(int id, int num_esquerdo, int num_direito);
 void devolve_talheres(int num_esquerdo, int num_direito);
-void comendo();
-void pensando();
 void pega_token();
 void devolve_token();
 void *filosofo(void *num);
@@ -48,6 +46,7 @@ void pega_token() {
 			ret = 0;
 		}
 		pthread_mutex_unlock(&LOCK_NUM_TOKENS);
+		usleep(100);
 	}
 }
 
@@ -57,16 +56,12 @@ void devolve_token(){
 	pthread_mutex_unlock(&LOCK_NUM_TOKENS);
 }
 
-int pega_talheres(int num_esquerdo, int num_direito) {
-	if (pthread_mutex_trylock(&TALHERES[num_esquerdo])) {
-		sleep(1);
-		if (pthread_mutex_trylock(&TALHERES[num_direito])) {
-			sleep(1);
-			return SUCESSO;
-		}
-		//pthread_mutex_unlock(&TALHERES[num_esquerdo]); //desiste de segurar o talher caso não conseguiu ambos
-	}
-	return FALHA;
+int pega_talheres(int id, int num_esquerdo, int num_direito) {
+	pthread_mutex_lock(&TALHERES[num_esquerdo]);
+	printf("\nTalher %d pego pelo filósofo %d.", num_esquerdo, id);
+	pthread_mutex_lock(&TALHERES[num_direito]);
+	printf("\nTalher %d pego pelo filósofo %d.", num_direito, id);
+	return SUCESSO;
 }
 
 void devolve_talheres(int num_esquerdo, int num_direito) {
@@ -74,21 +69,9 @@ void devolve_talheres(int num_esquerdo, int num_direito) {
 	pthread_mutex_unlock(&TALHERES[num_direito]);
 }
 
-void comendo() {
-	//unsigned int seed = time(NULL);
-	//unsigned int variante = rand_r(&seed) * 10;
-	//printf(" Comendo (%d ms).", variante);
-	usleep(TMP_COMENDO);
-}
-
-void pensando() {
-	unsigned int seed = time(NULL);
-	int variante = rand_r(&seed) * 10;
-	usleep(TMP_PENSANDO);
-}
-
 void *filosofo(void *num) {
 	int id = (int)num;
+	int alimentado = 0;
 	int talher_esquerdo, talher_direito;
 
 	talher_esquerdo = id;
@@ -101,17 +84,20 @@ void *filosofo(void *num) {
 	while(COMIDA_NA_MESA) {
 		printf("\nFilósofo %d está pronto pra comer.", id);
 		pega_token();
+
 		printf("\nFilósofo %d sentou-se à mesa. (token %d)", id, NUM_TOKENS);
-		while (!pega_talheres(talher_esquerdo, talher_direito) && COMIDA_NA_MESA) {
-			usleep(1000); //caso não consiga pegar ambos talheres
-		}
-		printf("\nFilósofo %d começou a comer. (talheres %d, %d)", id, talher_esquerdo, talher_direito);
-		comendo();
+		pega_talheres(id, talher_esquerdo, talher_direito);
+
+		printf("\nFilósofo %d começou a comer... (talheres %d, %d)", id, talher_esquerdo, talher_direito);
+		usleep(TMP_COMENDO * 1000);
+		alimentado += TMP_COMENDO / 100;
+
+		printf("\nFilósofo %d terminou de comer. Total ingerido: %dg", id, alimentado);
 		devolve_talheres(talher_esquerdo, talher_direito);
-		printf("\nFilósofo %d terminou de comer. (talheres %d, %d)", id, talher_esquerdo, talher_direito);
 		devolve_token();
-		printf("\nFilósofo %d levantou-se para pensar.", id);
-		pensando();
+
+		printf("\nFilósofo %d levantou-se para pensar...", id);
+		usleep(TMP_PENSANDO * 1000);
 	}
 
 	printf("\nFilósofo %d acabou de comer.", id);
@@ -127,19 +113,17 @@ int main(void) {
 			"Solucao de N-1 Tokens\n");
 	printf("\nNumero filosofos: ");
 	scanf("%d", &NUM_FILOSOFOS);
-	printf("\nTempo comendo (ms): ");
+	printf("Tempo comendo (ms): ");
 	scanf("%d", &TMP_COMENDO);
-	TMP_COMENDO = TMP_COMENDO * 1000;
-	printf("\nTempo pensando (ms): ");
+	printf("Tempo pensando (ms): ");
 	scanf("%d", &TMP_PENSANDO);
-	TMP_PENSANDO = TMP_PENSANDO * 1000;
-
-	srand(100); //fator variante
 
 	COMIDA_NA_MESA = 1;
-	pthread_t filosofos[NUM_FILOSOFOS];
 	NUM_TOKENS = NUM_FILOSOFOS-1;
-	TALHERES = malloc(sizeof(pthread_mutex_t) * NUM_FILOSOFOS); //inicializa mutexes de talheres
+
+	pthread_t filosofos[NUM_FILOSOFOS];
+	TALHERES = malloc(sizeof(pthread_mutex_t) * NUM_FILOSOFOS); //aloca array de mutexes de talheres
+
 	pthread_mutex_init(&LOCK_NUM_TOKENS, NULL);
 
 	for (i=0; i < NUM_FILOSOFOS; i++) {
@@ -148,7 +132,6 @@ int main(void) {
 
 	for (i=0; i < NUM_FILOSOFOS; i++) {
 		pthread_create(&filosofos[i], NULL, filosofo, (void *) i);
-		printf("%d", i);
 	}
 
 	for (i=0; i < NUM_FILOSOFOS; i++) {
