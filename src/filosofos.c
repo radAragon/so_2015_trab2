@@ -14,24 +14,29 @@
 #include <unistd.h>
 
 
-void *filosofo(void *num);
-void pega_talheres();
-void devolve_talheres();
+int pega_talheres(int num_esquerdo, int num_direito);
+void devolve_talheres(int num_esquerdo, int num_direito);
 void comendo();
 void pensando();
 void pega_token();
 void devolve_token();
+void *filosofo(void *num);
+
+#define FALHA 0;
+#define SUCESSO 1;
 
 
 //Globais
-unsigned int NUM_FILOSOFOS;
-unsigned int TMP_COMENDO;
-unsigned int TMP_PENSANDO;
-unsigned int NUM_TOKENS;
+int NUM_FILOSOFOS;
+unsigned TMP_COMENDO;
+unsigned TMP_PENSANDO;
+int NUM_TOKENS;
+int COMIDA_NA_MESA;
 pthread_mutex_t LOCK_NUM_TOKENS;
+pthread_mutex_t *TALHERES;
 
 
-int pega_token() {
+void pega_token() {
 	int ret = 0;
 	while (!ret) {
 		pthread_mutex_lock(&LOCK_NUM_TOKENS);
@@ -44,7 +49,6 @@ int pega_token() {
 		}
 		pthread_mutex_unlock(&LOCK_NUM_TOKENS);
 	}
-	return ret;
 }
 
 void devolve_token(){
@@ -53,13 +57,34 @@ void devolve_token(){
 	pthread_mutex_unlock(&LOCK_NUM_TOKENS);
 }
 
-//Comer requer disponibilidade de recursos ou senão espera
+int pega_talheres(int num_esquerdo, int num_direito) {
+	if (pthread_mutex_trylock(&TALHERES[num_esquerdo])) {
+		sleep(1);
+		if (pthread_mutex_trylock(&TALHERES[num_direito])) {
+			sleep(1);
+			return SUCESSO;
+		}
+		//pthread_mutex_unlock(&TALHERES[num_esquerdo]); //desiste de segurar o talher caso não conseguiu ambos
+	}
+	return FALHA;
+}
+
+void devolve_talheres(int num_esquerdo, int num_direito) {
+	pthread_mutex_unlock(&TALHERES[num_esquerdo]);
+	pthread_mutex_unlock(&TALHERES[num_direito]);
+}
+
 void comendo() {
-	sleep(TMP_COMENDO);
+	//unsigned int seed = time(NULL);
+	//unsigned int variante = rand_r(&seed) * 10;
+	//printf(" Comendo (%d ms).", variante);
+	usleep(TMP_COMENDO);
 }
 
 void pensando() {
-	sleep(TMP_PENSANDO);
+	unsigned int seed = time(NULL);
+	int variante = rand_r(&seed) * 10;
+	usleep(TMP_PENSANDO);
 }
 
 void *filosofo(void *num) {
@@ -73,26 +98,30 @@ void *filosofo(void *num) {
 		talher_direito = 0;
 	}
 
-	while(true) {
-		printf("\nFilósofo %d está pronto pra comer.");
+	while(COMIDA_NA_MESA) {
+		printf("\nFilósofo %d está pronto pra comer.", id);
 		pega_token();
-
-		//pega talheres
+		printf("\nFilósofo %d sentou-se à mesa. (token %d)", id, NUM_TOKENS);
+		while (!pega_talheres(talher_esquerdo, talher_direito) && COMIDA_NA_MESA) {
+			usleep(1000); //caso não consiga pegar ambos talheres
+		}
+		printf("\nFilósofo %d começou a comer. (talheres %d, %d)", id, talher_esquerdo, talher_direito);
 		comendo();
-		//devolve talheres
-
+		devolve_talheres(talher_esquerdo, talher_direito);
+		printf("\nFilósofo %d terminou de comer. (talheres %d, %d)", id, talher_esquerdo, talher_direito);
 		devolve_token();
-
-		printf("\nFilósofo %d parou para pensar.");
+		printf("\nFilósofo %d levantou-se para pensar.", id);
 		pensando();
 	}
 
-	printf("\nFilósofo %d acabou de comer.");
+	printf("\nFilósofo %d acabou de comer.", id);
 	return (void *) 0;
 }
 
 
 int main(void) {
+	int i;
+
 	printf("\n*** Problema do Jantar dos Filosofos ***\n"
 			"*** Trabalho 2 de SO1 ***\n"
 			"Solucao de N-1 Tokens\n");
@@ -100,24 +129,30 @@ int main(void) {
 	scanf("%d", &NUM_FILOSOFOS);
 	printf("\nTempo comendo (ms): ");
 	scanf("%d", &TMP_COMENDO);
+	TMP_COMENDO = TMP_COMENDO * 1000;
 	printf("\nTempo pensando (ms): ");
 	scanf("%d", &TMP_PENSANDO);
+	TMP_PENSANDO = TMP_PENSANDO * 1000;
 
+	srand(100); //fator variante
+
+	COMIDA_NA_MESA = 1;
 	pthread_t filosofos[NUM_FILOSOFOS];
-	pthread_mutex_t talheres[NUM_FILOSOFOS];
 	NUM_TOKENS = NUM_FILOSOFOS-1;
+	TALHERES = malloc(sizeof(pthread_mutex_t) * NUM_FILOSOFOS); //inicializa mutexes de talheres
 	pthread_mutex_init(&LOCK_NUM_TOKENS, NULL);
 
-	for (int i=0; i < NUM_FILOSOFOS; i++) {
-		pthread_mutex_init(&talheres[i], NULL);
+	for (i=0; i < NUM_FILOSOFOS; i++) {
+		pthread_mutex_init(&TALHERES[i], NULL);
 	}
 
-	for (int i=0; i < NUM_FILOSOFOS; i++) {
+	for (i=0; i < NUM_FILOSOFOS; i++) {
 		pthread_create(&filosofos[i], NULL, filosofo, (void *) i);
+		printf("%d", i);
 	}
 
-	for (int i=0; i < NUM_FILOSOFOS; i++) {
-		pthread_join(&filosofos[i], NULL);
+	for (i=0; i < NUM_FILOSOFOS; i++) {
+		pthread_join(filosofos[i], NULL);
 	}
 
 	return EXIT_SUCCESS;
